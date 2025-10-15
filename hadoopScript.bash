@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 installDependencies(){
-  sudo apt update && sudo apt install -y openjdk-8-jdk ssh || { echo Failed ; exit 1; }
+  sudo apt update && sudo apt install -y openjdk-8-jdk openssh-server openssh-client || { echo Failed ; exit 1; }
 }
 setupSSH(){
 sudo -u hadoop bash <<EOF
