@@ -1,40 +1,60 @@
 #!/usr/bin/env bash
 
+set -e
+
+if [[ $EUID -ne 0 ]]; then
+  echo "❌ Please run this script as root or with sudo"
+  exit 1
+fi
+if ! command -v sudo &>/dev/null; then
+  apt update && apt install -y sudo
+fi
+HADOOP_VERSION="3.3.6"
+HADOOP_HOME="/home/hadoop/hadoop"
+JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64"
+USER_NAME="hadoop"
+PASSWORD="hadoop"
 installDependencies(){
   sudo apt update && sudo apt install -y openjdk-8-jdk openssh-server openssh-client || { echo Failed ; exit 1; }
 }
 setupSSH(){
-sudo -u hadoop bash <<EOF
-mkdir -p ~/.ssh
-ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
-cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
-chmod 700 ~/.ssh
-chmod 600 ~/.ssh/authorized_keys
+sudo -u $USER_NAME bash <<EOF
+mkdir -p /home/$USER_NAME/.ssh
+ssh-keygen -t rsa -N "" -f /home/$USER_NAME/.ssh/id_rsa
+cat /home/$USER_NAME/.ssh/id_rsa.pub >> /home/$USER_NAME/.ssh/authorized_keys
+chmod 700 /home/$USER_NAME/.ssh
+chmod 600 /home/$USER_NAME/.ssh/authorized_keys
 EOF
+sudo systemctl enable ssh
+sudo systemctl start ssh
 }
 downloadHadoop(){
-  wget -P /tmp/ https://dlcdn.apache.org/hadoop/common/hadoop-3.3.6/hadoop-3.3.6.tar.gz
-  tar -xzvf /tmp/hadoop-3.3.6.tar.gz -C /tmp/
-  mv hadoop-3.3.6 hadoop
+sudo -u $USER_NAME bash <<EOF
+wget -P /tmp/ "https://dlcdn.apache.org/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+tar -xzvf /tmp/hadoop-${HADOOP_VERSION}.tar.gz -C /home/$USER_NAME
+mv /home/$USER_NAME/hadoop-${HADOOP_VERSION} /home/$USER_NAME/hadoop
+rm /tmp/hadoop-${HADOOP_VERSION}.tar.gz
+EOF
+sudo chown -R $USER_NAME:$USER_NAME /home/$USER_NAME/hadoop
 }
 
 #apt update && apt install -y sudo
 #install dependencies
 installDependencies
-#Download hadoop
-downloadHadoop
-#add some enviromental variable
-HADOOP_TEMP=/tmp/hadoop
-HADOOP_HOME="/home/hadoop/hadoop"
-JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64"
-USER_NAME="hadoop"
-PASSWORD="hadoop"
 
-sudo useradd -m -s /bin/bash $USER_NAME
-echo "$USER_NAME:$PASSWORD" | sudo chpasswd
+#create hadoop user
+if ! id -u $USER_NAME &>/dev/null; then
+  sudo useradd -m -s /bin/bash $USER_NAME
+  echo "$USER_NAME:$PASSWORD" | sudo chpasswd
+fi
 #setup ssh connection in the hadoop user
 setupSSH
+#Download hadoop
+downloadHadoop
 
+#clean the bashrc file
+sudo -u $USER_NAME sed -i '/HADOOP_HOME/d;/JAVA_HOME/d;/HADOOP_/d' /home/$USER_NAME/.bashrc
+#add some enviromental variable
 cat <<EOF | sudo -u $USER_NAME tee -a /home/$USER_NAME/.bashrc >/dev/null
 export JAVA_HOME=${JAVA_HOME}
 export HADOOP_HOME=${HADOOP_HOME}
@@ -49,15 +69,15 @@ export HADOOP_OPTS='-Djava.library.path=\$HADOOP_HOME/lib/native'
 EOF
 
 #config hadoop
-if grep -q "JAVA_HOME=" $HADOOP_TEMP/etc/hadoop/hadoop-env.sh; then
-  sed -i "/JAVA_HOME=/c\export JAVA_HOME=${JAVA_HOME}" $HADOOP_TEMP/etc/hadoop/hadoop-env.sh
+if grep -q "JAVA_HOME=" $HADOOP_HOME/etc/hadoop/hadoop-env.sh; then
+  sudo -u $USER_NAME sed -i "/JAVA_HOME=/c\export JAVA_HOME=${JAVA_HOME}" $HADOOP_HOME/etc/hadoop/hadoop-env.sh
 else
-  echo "export JAVA_HOME=${JAVA_HOME}" >> $HADOOP_TEMP/etc/hadoop/hadoop-env.sh
+  echo "export JAVA_HOME=${JAVA_HOME}" | sudo -u $USER_NAME tee -a $HADOOP_HOME/etc/hadoop/hadoop-env.sh &>/dev/null
 fi
 
-mkdir -p /home/$USER_NAME/hadoopdata/hdfs/{namenode,datanode}
+sudo -u $USER_NAME mkdir -p /home/$USER_NAME/hadoopdata/hdfs/{namenode,datanode}
 
-cat <<EOF > $HADOOP_TEMP/etc/hadoop/core-site.xml
+sudo -u $USER_NAME cat <<EOF > $HADOOP_HOME/etc/hadoop/core-site.xml
 <configuration>
 <property>
 <name>fs.defaultFS</name>
@@ -66,7 +86,7 @@ cat <<EOF > $HADOOP_TEMP/etc/hadoop/core-site.xml
 </configuration>
 EOF
 
-cat <<EOF > $HADOOP_TEMP/etc/hadoop/hdfs-site.xml
+sudo -u $USER_NAME cat <<EOF > $HADOOP_HOME/etc/hadoop/hdfs-site.xml
 <configuration>
 <property>
 <name>dfs.replication</name>
@@ -82,7 +102,7 @@ cat <<EOF > $HADOOP_TEMP/etc/hadoop/hdfs-site.xml
 </configuration>
 EOF
 
-cat <<EOF > $HADOOP_TEMP/etc/hadoop/mapred-site.xml
+sudo -u $USER_NAME cat <<EOF > $HADOOP_HOME/etc/hadoop/mapred-site.xml
 <configuration>
 <property>
 <name>yarn.app.mapreduce.am.env</name>
@@ -99,7 +119,7 @@ cat <<EOF > $HADOOP_TEMP/etc/hadoop/mapred-site.xml
 </configuration>
 EOF
 
-cat <<EOF > $HADOOP_TEMP/etc/hadoop/yarn-site.xml
+sudo -u $USER_NAME cat <<EOF > $HADOOP_HOME/etc/hadoop/yarn-site.xml
 <configuration>
 <property>
 <name>yarn.nodemanager.aux-services</name>
@@ -107,7 +127,3 @@ cat <<EOF > $HADOOP_TEMP/etc/hadoop/yarn-site.xml
 </property>
 </configuration>
 EOF
-
-cp -r $HADOOP_TEMP $HADOOP_HOME
-chown -R hadoop:hadoop /home/hadoop/hadoop
-rm -rf $HADOOP_TEMP
