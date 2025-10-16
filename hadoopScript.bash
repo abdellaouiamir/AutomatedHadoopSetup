@@ -35,7 +35,6 @@ if ! [ -f /tmp/hadoop-${HADOOP_VERSION}.tar.gz ]; then
 fi
 tar -xzvf /tmp/hadoop-${HADOOP_VERSION}.tar.gz -C /home/$USER_NAME
 mv /home/$USER_NAME/hadoop-${HADOOP_VERSION} /home/$USER_NAME/hadoop
-rm /tmp/hadoop-${HADOOP_VERSION}.tar.gz
 EOF
 sudo chown -R $USER_NAME:$USER_NAME /home/$USER_NAME/hadoop
 }
@@ -129,3 +128,6 @@ sudo -u $USER_NAME cat <<EOF > $HADOOP_HOME/etc/hadoop/yarn-site.xml
 </property>
 </configuration>
 EOF
+
+
+rm /tmp/hadoop-${HADOOP_VERSION}.tar.gz
