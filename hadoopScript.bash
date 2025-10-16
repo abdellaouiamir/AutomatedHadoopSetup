@@ -30,7 +30,9 @@ sudo systemctl start ssh
 }
 downloadHadoop(){
 sudo -u $USER_NAME bash <<EOF
-wget -P /tmp/ "https://dlcdn.apache.org/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+if ! [ -f /tmp/hadoop-${HADOOP_VERSION}.tar.gz ]; then
+  wget -P /tmp/ "https://dlcdn.apache.org/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+fi
 tar -xzvf /tmp/hadoop-${HADOOP_VERSION}.tar.gz -C /home/$USER_NAME
 mv /home/$USER_NAME/hadoop-${HADOOP_VERSION} /home/$USER_NAME/hadoop
 rm /tmp/hadoop-${HADOOP_VERSION}.tar.gz
